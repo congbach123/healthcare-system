@@ -1,0 +1,370 @@
+# healthcare_microservices/docker-compose.yml
+
+version: "3.8" # Specify compose file version
+
+# Define networks
+networks:
+  healthcare_network: # Custom network for services to communicate
+
+# Define services
+services:
+  # --- MySQL Database Service ---
+  db:
+    image: mysql:8.0 # Use a specific MySQL version
+    container_name: healthcare-mysql-db
+    command: --default-authentication-plugin=mysql_native_password # Needed for some clients
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-verysecretpassword}
+      MYSQL_DATABASE: ${DB_NAME:-healthcare_db}
+      MYSQL_USER: ${DB_USER:-your_user} # Không dùng root ở đây!
+      MYSQL_PASSWORD: ${DB_PASSWORD:-your_password}
+    volumes:
+      # Persist database data
+      - mysql_data:/var/lib/mysql
+      # Optional: Initialize database with custom scripts
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    ports:
+      # Map host port 3306 to container port 3306
+      # This allows you to connect to the DB from your host machine
+      - "3307:3306"
+    networks:
+      - healthcare_network # Connect to the custom network
+    healthcheck: # Check if the database is ready
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+      start_period: 10s
+
+  # --- Identity Service ---
+  identity-service:
+    # Build context is the root directory, using the Dockerfile found there
+    build:
+      context: .
+      dockerfile: Dockerfile # Uses the generic Dockerfile
+    container_name: healthcare-identity-service
+    # Copy only the service-specific files into the container over the /app COPY in Dockerfile
+    # This avoids rebuilding the whole image layer if only one service changes
+    volumes:
+      - ./identity_service:/app/identity_service # Mount the code
+    # Install dependencies only for this service's requirements.txt
+    # This is done AFTER copying code, so requirements.txt is available
+    command: sh -c "pip install -r identity_service/requirements.txt && python identity_service/manage.py wait_for_db && python identity_service/manage.py migrate --noinput && python identity_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      # Environment variables for settings.py
+      DB_NAME: db_identity # Specific database name for this service
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db # Connect to the database service named 'db' in docker-compose
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-a-super-secret-key}
+      DEBUG: "True" # Set to False for production
+      ALLOWED_HOSTS: "*" # Allow connections from any host in dev
+      # Service URLs - Identity Service doesn't call other specific services
+      # but other services need its URL. We define its *internal* network address here.
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity # How OTHER services call Identity
+    ports:
+      # Map host port 8000 to container port 8000
+      # This allows the frontend/Postman to access this service
+      - "8000:8000"
+    networks:
+      - healthcare_network
+    depends_on:
+      db: # Identity service depends on the database service
+        condition: service_healthy # Wait for DB health check to pass
+
+  # --- Patient Service ---
+  patient-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-patient-service
+    volumes:
+      - ./patient_service:/app/patient_service
+    command: sh -c "pip install -r patient_service/requirements.txt && python patient_service/manage.py wait_for_db && python patient_service/manage.py migrate --noinput && python patient_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      DB_NAME: db_patient
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-another-secret-key}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      # Service URLs - Patient Service calls Identity
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity # How Patient calls Identity
+    ports:
+      - "8001:8000" # Map host port 8001 to container port 8000
+    networks:
+      - healthcare_network
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service: # Patient service depends on Identity
+        condition: service_started # Wait for Identity container to start
+
+  # --- Doctor Service ---
+  doctor-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-doctor-service
+    volumes:
+      - ./doctor_service:/app/doctor_service
+    command: sh -c "pip install -r doctor_service/requirements.txt && python doctor_service/manage.py wait_for_db && python doctor_service/manage.py migrate --noinput && python doctor_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      DB_NAME: db_doctor
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-yet-another-secret}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      # Service URLs - Doctor Service calls Identity
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+    ports:
+      - "8002:8000"
+    networks:
+      - healthcare_network
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+
+  # --- Pharmacist Service ---
+  pharmacist-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-pharmacist-service
+    volumes:
+      - ./pharmacist_service:/app/pharmacist_service
+    command: sh -c "pip install -r pharmacist_service/requirements.txt && python pharmacist_service/manage.py wait_for_db && python pharmacist_service/manage.py migrate --noinput && python pharmacist_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      DB_NAME: db_pharmacist
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-pharma-secret}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      # Service URLs - Pharmacist Service calls Identity and Prescription
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      PRESCRIPTION_SERVICE_BASE_URL: http://prescription-service:8000/api # How Pharmacist calls Prescription
+    ports:
+      - "8003:8000" # Corrected port mapping for host
+    networks:
+      - healthcare_network
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      prescription-service: # Pharmacist calls Prescription
+        condition: service_started
+
+  # --- Nurse Service ---
+  nurse-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-nurse-service
+    volumes:
+      - ./nurse_service:/app/nurse_service
+    command: sh -c "pip install -r nurse_service/requirements.txt && python nurse_service/manage.py wait_for_db && python nurse_service/manage.py migrate --noinput && python nurse_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      DB_NAME: db_nurse
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-nurse-secret}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      # Service URLs - Nurse Service calls Identity and Patient
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      PATIENT_SERVICE_BASE_URL: http://patient-service:8000/api # How Nurse calls Patient
+    ports:
+      - "8005:8000"
+    networks:
+      - healthcare_network
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      patient-service: # Nurse calls Patient
+        condition: service_started
+
+  # --- Lab Service ---
+  lab-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-lab-service
+    volumes:
+      - ./lab_service:/app/lab_service
+    command: sh -c "pip install -r lab_service/requirements.txt && python lab_service/manage.py wait_for_db && python lab_service/manage.py migrate --noinput && python lab_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      DB_NAME: db_lab
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-lab-secret}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      # Service URLs - Lab Service calls Identity
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+    ports:
+      - "8006:8000"
+    networks:
+      - healthcare_network
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+
+  # --- Medical Records Service ---
+  medical-records-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-medical-records-service
+    volumes:
+      - ./medical_records_service:/app/medical_records_service
+    command: sh -c "pip install -r medical_records_service/requirements.txt && python medical_records_service/manage.py wait_for_db && python medical_records_service/manage.py migrate --noinput && python medical_records_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      DB_NAME: db_medical_records
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-mrs-secret}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      # Service URLs - MRS calls Identity, Patient, Nurse, Lab, Prescription (when implemented)
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      PATIENT_SERVICE_BASE_URL: http://patient-service:8000/api
+      NURSE_SERVICE_BASE_URL: http://nurse-service:8000/api # Note: Nurse service URLs start with /api/, not /nurses/ or /vitals/
+      LAB_SERVICE_BASE_URL: http://lab-service:8000/api # Note: Lab service URLs start with /api/, not /labtechs/, /orders/, /results/
+      PRESCRIPTION_SERVICE_BASE_URL: http://prescription-service:8000/api # Note: Prescription service URLs start with /api/
+    ports:
+      - "8007:8000"
+    networks:
+      - healthcare_network
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      patient-service:
+        condition: service_started
+      nurse-service:
+        condition: service_started
+      lab-service:
+        condition: service_started
+      prescription-service:
+        condition: service_started # Make MRS depend on Prescription now
+
+  # --- Prescription Service ---
+  prescription-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-prescription-service
+    volumes:
+      - ./prescription_service:/app/prescription_service
+    command: sh -c "pip install -r prescription_service/requirements.txt && python prescription_service/manage.py wait_for_db && python prescription_service/manage.py migrate --noinput && python prescription_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      DB_NAME: db_prescription
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-presc-secret}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      # Service URLs - Prescription Service calls Identity
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+    ports:
+      - "8008:8000"
+    networks:
+      - healthcare_network
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+
+  # --- Administrator Service ---
+  administrator-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-administrator-service
+    volumes:
+      - ./administrator_service:/app/administrator_service
+    command: sh -c "pip install -r administrator_service/requirements.txt && python administrator_service/manage.py wait_for_db && python administrator_service/manage.py migrate --noinput && python administrator_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      DB_NAME: db_admin
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-admin-secret}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      # Service URLs - Admin Service calls Identity
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+    ports:
+      - "8009:8000"
+    networks:
+      - healthcare_network
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+
+  # --- Insurance Provider Service (To be implemented) ---
+  # insurance-provider-service:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: healthcare-insurance-provider-service
+  #   volumes:
+  #     - ./insurance_provider_service:/app/insurance_provider_service
+  #   command: sh -c "pip install -r insurance_provider_service/requirements.txt && python insurance_provider_service/manage.py migrate --noinput && python insurance_provider_service/manage.py runserver 0.0.0.0:8000"
+  #   environment:
+  #     DB_NAME: db_insurance
+  #     DB_USER: ${DB_USER:-your_user}
+  #     DB_PASSWORD: ${DB_PASSWORD:-your_password}
+  #     DB_HOST: db
+  #     DB_PORT: 3306
+  #     SECRET_KEY: ${SECRET_KEY:-insurance-secret}
+  #     DEBUG: "True"
+  #     ALLOWED_HOSTS: "*"
+  #     # Service URLs - Insurance might call Identity, Patient, Medical Records, etc.
+  #     IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+  #     PATIENT_SERVICE_BASE_URL: http://patient-service:8000/api
+  #     # ... others ...
+  #   ports:
+  #     - "8010:8000"
+  #   networks:
+  #     - healthcare_network
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #     identity-service:
+  #       condition: service_started
+  #     patient-service:
+  #       condition: service_started
+  #     # ... others it depends on ...
+
+# Define volumes for data persistence
+volumes:
+  mysql_data: # Volume for MySQL data
