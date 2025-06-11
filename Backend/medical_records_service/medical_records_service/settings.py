@@ -91,14 +91,14 @@ DATABASES = {
 }
 
 # # Add settings for other services this service needs to communicate with
-# IDENTITY_SERVICE_BASE_URL = 'http://localhost:8000/api/identity'
+# USER_SERVICE_BASE_URL = 'http://localhost:8000/api/user'
 # PATIENT_SERVICE_BASE_URL = 'http://localhost:8001/api' # Assuming Patient on 8001, /api/
 # NURSE_SERVICE_BASE_URL = 'http://localhost:8005/api' # Assuming Nurse on 8005, /api/
 # LAB_SERVICE_BASE_URL = 'http://localhost:8006/api' # Assuming Lab on 8006, /api/
 # # Add others as they are implemented/needed for aggregation
 # # PRESCRIPTION_SERVICE_BASE_URL = 'http://localhost:80XX/api'
 
-IDENTITY_SERVICE_BASE_URL = os.environ.get('IDENTITY_SERVICE_BASE_URL', 'http://localhost:8000/api/identity') # <-- Read from env
+USER_SERVICE_BASE_URL = os.environ.get('USER_SERVICE_BASE_URL', 'http://localhost:8000/api/user') # <-- Read from env
 PATIENT_SERVICE_BASE_URL = os.environ.get('PATIENT_SERVICE_BASE_URL', 'http://localhost:8001/api') # <-- Read from env
 NURSE_SERVICE_BASE_URL = os.environ.get('NURSE_SERVICE_BASE_URL', 'http://localhost:8005/api') # <-- Read from env
 LAB_SERVICE_BASE_URL = os.environ.get('LAB_SERVICE_BASE_URL', 'http://localhost:8006/api') # <-- Read from env

@@ -6,7 +6,7 @@ import uuid
 class Appointment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # UUIDs referencing users in the Identity Service
+    # UUIDs referencing users in the User Service
     # Consider adding db_index=True if you will frequently query by these IDs
     patient_user_id = models.UUIDField(db_index=True)
     doctor_user_id = models.UUIDField(db_index=True)

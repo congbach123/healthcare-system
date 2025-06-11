@@ -10,22 +10,20 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(os.path.join(BASE_DIR.parent, '.env')) # Load from root .env
 
+SECRET_KEY = os.environ.get('SECRET_KEY', 'appointment-insecure-default-key')
+DEBUG_STR = os.environ.get('DEBUG', 'True')
+DEBUG = DEBUG_STR.lower() in ('true', '1')
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-3d6eqizm!k2hb%+gfp*t_$)k!ii9_*669=v#v&+8&kk$%q+r(r'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS_STR = os.environ.get('ALLOWED_HOSTS', '127.0.0.1,localhost')
+ALLOWED_HOSTS = ALLOWED_HOSTS_STR.split(',') if ALLOWED_HOSTS_STR else []
 
 
 # Application definition
@@ -74,19 +72,25 @@ WSGI_APPLICATION = 'appointment_service.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+# Database
+DB_NAME = os.environ.get('DB_NAME', 'sand_fp_db_appointment') # Default specific name
+DB_USER = os.environ.get('DB_USER', 'root')
+DB_PASSWORD = os.environ.get('DB_PASSWORD', 'tungcoi1234')
+DB_HOST = os.environ.get('DB_HOST', 'localhost')
+DB_PORT = os.environ.get('DB_PORT', '3306')
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'sand_fp_db_appointment',  # <-- Your appointment database name
-        'USER': 'root',     # <-- Your MySQL user
-        'PASSWORD': 'tungcoi1234', # <-- Your MySQL password
-        'HOST': 'localhost',     # <-- Your MySQL host
-        'PORT': '3306',          # <-- Your MySQL port
+        'NAME': DB_NAME,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASSWORD,
+        'HOST': DB_HOST, # In Docker Compose, this will be 'db'
+        'PORT': DB_PORT,
     }
 }
 
-IDENTITY_SERVICE_BASE_URL = 'http://localhost:8000/api/identity' # Assuming Identity is on 8000
+USER_SERVICE_BASE_URL = os.environ.get('USER_SERVICE_BASE_URL', 'http://localhost:8000/api/user') # <-- Read from env
 
 
 # Password validation

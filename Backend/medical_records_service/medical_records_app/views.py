@@ -20,15 +20,15 @@ def parse_json_body(request):
     except json.JSONDecodeError:
         return None
 
-# Helper function to call Identity Service and return user data or error (same pattern, slightly adapted)
+# Helper function to call User Service and return user data or error (same pattern, slightly adapted)
 # Can make this more generic if needed, but specific service calls are clearer for demo
-def get_user_from_identity_service(user_id):
-    """Fetches user data from the Identity Service."""
-    identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{user_id}/"
+def get_user_from_user_service(user_id):
+    """Fetches user data from the User Service."""
+    user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{user_id}/"
     try:
-        identity_response = requests.get(identity_service_url)
-        if identity_response.status_code == 200:
-            user_data = identity_response.json()
+        user_response = requests.get(user_service_url)
+        if user_response.status_code == 200:
+            user_data = user_response.json()
             # Remove redundant/potentially sensitive fields for aggregation context
             user_data.pop('id', None)
             user_data.pop('password', None)
@@ -38,14 +38,14 @@ def get_user_from_identity_service(user_id):
             user_data.pop('last_login', None)
             # user_data.pop('is_active', None) # Decide if you want is_active
             return user_data, None # Return data and no error
-        elif identity_response.status_code == 404:
-            return None, f"Identity user not found for ID {user_id}"
+        elif user_response.status_code == 404:
+            return None, f"User user not found for ID {user_id}"
         else:
-            return None, f"Identity Service returned error {identity_response.status_code}: {identity_response.text}"
+            return None, f"User Service returned error {user_response.status_code}: {user_response.text}"
     except requests.exceptions.RequestException as e:
-        return None, f"Network error calling Identity Service for user ID {user_id}: {e}"
+        return None, f"Network error calling User Service for user ID {user_id}: {e}"
     except Exception as e:
-        return None, f"Unexpected error processing Identity Service response for user ID {user_id}: {e}"
+        return None, f"Unexpected error processing User Service response for user ID {user_id}: {e}"
 
 # Helper function to call other services
 def call_other_service(base_url, endpoint, params=None):
@@ -110,8 +110,8 @@ def doctor_report_list_create_view(request):
              patient_ids.add(report.patient_user_id)
              doctor_ids.add(report.doctor_user_id)
 
-        # Fetch all needed Identity users in optimized calls (if Identity had bulk GET)
-        # For now, iterate over reports and call get_user_from_identity_service which calls one by one.
+        # Fetch all needed User users in optimized calls (if User had bulk GET)
+        # For now, iterate over reports and call get_user_from_user_service which calls one by one.
         # This demonstrates the S2S call per item in list loop, similar to Lab Service Results.
 
         for report in reports:
@@ -128,14 +128,14 @@ def doctor_report_list_create_view(request):
 
             combined_entry = {**report_data} # Start with report data
 
-            # Aggregate patient and doctor identity data
-            patient_user_data, patient_error = get_user_from_identity_service(report.patient_user_id)
-            doctor_user_data, doctor_error = get_user_from_identity_service(report.doctor_user_id)
+            # Aggregate patient and doctor user data
+            patient_user_data, patient_error = get_user_from_user_service(report.patient_user_id)
+            doctor_user_data, doctor_error = get_user_from_user_service(report.doctor_user_id)
 
             if patient_user_data: combined_entry['patient'] = patient_user_data
-            elif patient_error: combined_entry['_patient_identity_error'] = patient_error
+            elif patient_error: combined_entry['_patient_user_error'] = patient_error
             if doctor_user_data: combined_entry['doctor'] = doctor_user_data
-            elif doctor_error: combined_entry['_doctor_identity_error'] = doctor_error
+            elif doctor_error: combined_entry['_doctor_user_error'] = doctor_error
 
             aggregated_data.append(combined_entry)
 
@@ -213,14 +213,14 @@ def doctor_report_detail_view(request, report_id: UUID):
                 'updated_at': report.updated_at.isoformat() if report.updated_at else None,
             }
 
-            patient_user_data, patient_error = get_user_from_identity_service(report.patient_user_id)
-            doctor_user_data, doctor_error = get_user_from_identity_service(report.doctor_user_id)
+            patient_user_data, patient_error = get_user_from_user_service(report.patient_user_id)
+            doctor_user_data, doctor_error = get_user_from_user_service(report.doctor_user_id)
 
             combined_data = {**report_data}
             if patient_user_data: combined_data['patient'] = patient_user_data
-            elif patient_error: combined_data['_patient_identity_error'] = patient_error
+            elif patient_error: combined_data['_patient_user_error'] = patient_error
             if doctor_user_data: combined_data['doctor'] = doctor_user_data
-            elif doctor_error: combined_data['_doctor_identity_error'] = doctor_error
+            elif doctor_error: combined_data['_doctor_user_error'] = doctor_error
 
             return JsonResponse(combined_data)
 
@@ -240,15 +240,15 @@ def patient_medical_history_view(request, patient_user_id: UUID):
     if request.method == 'GET':
         combined_history = {} # Dictionary to build the full history response
 
-        # 1. Get Patient's Identity data
-        patient_identity_data, identity_error = get_user_from_identity_service(patient_user_id)
-        if patient_identity_data:
-            combined_history['patient_identity'] = patient_identity_data
-        elif identity_error:
-            combined_history['_patient_identity_error'] = identity_error
-            # Decide if you return a 404 if the patient identity is missing
+        # 1. Get Patient's User data
+        patient_user_data, user_error = get_user_from_user_service(patient_user_id)
+        if patient_user_data:
+            combined_history['patient_user'] = patient_user_data
+        elif user_error:
+            combined_history['_patient_user_error'] = user_error
+            # Decide if you return a 404 if the patient user is missing
             # For this demo, let's return whatever data we can get with the error flagged.
-            # return JsonResponse({'error': f'Patient not found in Identity Service: {identity_error}'}, status=404)
+            # return JsonResponse({'error': f'Patient not found in User Service: {user_error}'}, status=404)
 
 
         # 2. Get Patient's specific profile data from Patient Service
@@ -270,7 +270,7 @@ def patient_medical_history_view(request, patient_user_id: UUID):
             params={'patient_user_id': str(patient_user_id)} # Pass UUID as string query param
         )
         if patient_vitals_data:
-            # Nurse Service already aggregates patient/nurse identity, so we include the results directly
+            # Nurse Service already aggregates patient/nurse user, so we include the results directly
             combined_history['vitals_history'] = patient_vitals_data
         elif vitals_error:
             combined_history['_vitals_history_error'] = vitals_error # Add error if call failed
@@ -284,7 +284,7 @@ def patient_medical_history_view(request, patient_user_id: UUID):
             params={'patient_user_id': str(patient_user_id)} # Pass UUID as string query param
         )
         if lab_orders_data:
-            # Lab Service already aggregates patient/doctor identity for orders
+            # Lab Service already aggregates patient/doctor user for orders
             combined_history['lab_orders'] = lab_orders_data
         elif orders_error:
              combined_history['_lab_orders_error'] = orders_error # Add error
@@ -296,11 +296,11 @@ def patient_medical_history_view(request, patient_user_id: UUID):
         # To get results for a patient, we'd ideally fetch orders first (as done above),
         # collect the order IDs, and then query results by those order IDs.
         # However, the Lab Service GET /api/results/ endpoint *does* aggregate order data
-        # including patient/doctor identity. So, we can fetch ALL results and filter by patient_user_id
+        # including patient/doctor user. So, we can fetch ALL results and filter by patient_user_id
         # *after* getting the response, although this is inefficient if there are many results globally.
         # A better approach: modify the Lab Service GET /api/results/ to accept patient_user_id filter.
         # Or, as a simpler demo approach here: just fetch ALL results from the Lab Service's
-        # list endpoint (which aggregates patient identity) and rely on that aggregation.
+        # list endpoint (which aggregates patient user) and rely on that aggregation.
         # Let's modify the call to the Lab Service's results endpoint to filter by patient_user_id if that filter was added there.
         # Assuming for this example that the Lab Service GET /api/results/ endpoint *was* modified to accept patient_user_id filter.
         # If not, the simple call below will get all results and the Medical Records service won't filter them.
@@ -308,7 +308,7 @@ def patient_medical_history_view(request, patient_user_id: UUID):
         # If Lab Service GET /api/results/ *doesn't* support patient_user_id filter, this call will still succeed but the list might be large.
         # A more correct pattern: Use the `lab_orders_data` fetched in step 4 to get the `lab_order_id`s,
         # then make a call like `GET /api/results/?lab_order_id__in=<comma_separated_ids>`.
-        # Since Lab Service's GET /api/results/ *already* aggregates order data including patient/doctor identity,
+        # Since Lab Service's GET /api/results/ *already* aggregates order data including patient/doctor user,
         # the easiest approach for this demo is to call Lab Service's *list* endpoint for results and hope it has patient filtering,
         # OR just fetch all and rely on its aggregation providing the patient info.
         # Let's assume Lab Service GET /api/results/ supports patient_user_id filter for simplicity in the aggregator.
@@ -318,7 +318,7 @@ def patient_medical_history_view(request, patient_user_id: UUID):
              params={'patient_user_id': str(patient_user_id)} # Assume Lab Results endpoint accepts this filter
         )
         if lab_results_data:
-             # Lab Service already aggregates order, patient, doctor, lab tech identity for results
+             # Lab Service already aggregates order, patient, doctor, lab tech user for results
              combined_history['lab_results'] = lab_results_data
         elif results_error:
              combined_history['_lab_results_error'] = results_error # Add error
@@ -330,14 +330,14 @@ def patient_medical_history_view(request, patient_user_id: UUID):
              reports = DoctorReport.objects.filter(patient_user_id=patient_user_id).order_by('-report_date')
              doctor_reports_data = []
              # Aggregation for reports happens here in this service (its owner)
-             # We need Doctor Identity data for each report
+             # We need Doctor User data for each report
              doctor_ids = set(report.doctor_user_id for report in reports)
              # Fetch all unique doctors needed for aggregation efficiently
              doctors_data = {}
              for doc_id in doctor_ids:
-                  user_data, err = get_user_from_identity_service(doc_id)
+                  user_data, err = get_user_from_user_service(doc_id)
                   if user_data: doctors_data[str(doc_id)] = user_data
-                  elif err: print(f"WARNING: Could not fetch identity for doctor {doc_id}: {err}")
+                  elif err: print(f"WARNING: Could not fetch user for doctor {doc_id}: {err}")
 
 
              for report in reports:
@@ -352,11 +352,11 @@ def patient_medical_history_view(request, patient_user_id: UUID):
                      'updated_at': report.updated_at.isoformat() if report.updated_at else None,
                  }
                  combined_report_entry = {**report_data}
-                 # Add doctor identity data fetched earlier
+                 # Add doctor user data fetched earlier
                  if str(report.doctor_user_id) in doctors_data:
                       combined_report_entry['doctor'] = doctors_data[str(report.doctor_user_id)]
                  else:
-                      combined_report_entry['_doctor_identity_error'] = f"Identity data missing for doctor ID {report.doctor_user_id}"
+                      combined_report_entry['_doctor_user_error'] = f"User data missing for doctor ID {report.doctor_user_id}"
 
                  doctor_reports_data.append(combined_report_entry)
 
@@ -381,8 +381,8 @@ def patient_medical_history_view(request, patient_user_id: UUID):
 
 
         # 8. Return the comprehensive aggregated history
-        # Check if we got any data at all, or if the patient identity wasn't found.
-        # If patient identity wasn't found, maybe return 404? Let's return 200 with the error flag for demo.
+        # Check if we got any data at all, or if the patient user wasn't found.
+        # If patient user wasn't found, maybe return 404? Let's return 200 with the error flag for demo.
         return JsonResponse(combined_history)
 
     # Skipping PUT/PATCH/DELETE for now

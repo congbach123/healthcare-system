@@ -43,10 +43,10 @@ def patient_list_create_view(request):
         if data is None:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
-        # User ID is mandatory and MUST come from the Identity Service
+        # User ID is mandatory and MUST come from the User Service
         user_id_str = data.get('user_id')
         if not user_id_str:
-             return JsonResponse({'error': 'user_id is required (must be a UUID string from the Identity Service)'}, status=400)
+             return JsonResponse({'error': 'user_id is required (must be a UUID string from the User Service)'}, status=400)
 
         try:
              # Validate that the provided user_id string is a valid UUID format
@@ -113,19 +113,19 @@ def patient_detail_view(request, user_id: UUID): # Accepts user_id, Django's UUI
                 'updated_at': patient.updated_at.isoformat() if patient.updated_at else None, # Datetime to string
             }
 
-            # 2. Call the Identity Service to get common user data
-            identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{user_id}/"
-            print(f"Patient Service calling Identity Service: {identity_service_url}") # For debugging/demonstration
+            # 2. Call the User Service to get common user data
+            user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{user_id}/"
+            print(f"Patient Service calling User Service: {user_service_url}") # For debugging/demonstration
 
             try:
-                # Make the HTTP GET request to the Identity Service
-                identity_response = requests.get(identity_service_url)
+                # Make the HTTP GET request to the User Service
+                user_response = requests.get(user_service_url)
 
                 # Check if the request was successful
-                if identity_response.status_code == 200:
-                    user_data = identity_response.json()
-                    print("Identity Service call successful.") # For debugging/demonstration
-                    # Remove redundant user_id from identity data before merging
+                if user_response.status_code == 200:
+                    user_data = user_response.json()
+                    print("User Service call successful.") # For debugging/demonstration
+                    # Remove redundant user_id from user data before merging
                     if 'id' in user_data:
                          del user_data['id'] # We already have user_id in patient_data
 
@@ -136,29 +136,29 @@ def patient_detail_view(request, user_id: UUID): # Accepts user_id, Django's UUI
 
                     return JsonResponse(combined_data)
 
-                elif identity_response.status_code == 404:
+                elif user_response.status_code == 404:
                     # This case should ideally not happen if the user_id in Patient table is valid
                     # But handling it is good practice.
-                    print(f"Identity Service returned 404 for user_id {user_id}. User likely deleted from Identity.")
+                    print(f"User Service returned 404 for user_id {user_id}. User likely deleted from User.")
                     # Decide how to handle: return Patient data only? Return error?
                     # For this demo, let's return the patient data with a warning or indication.
                     # Or, maybe better for demonstration, return a specific error.
-                    return JsonResponse({'error': 'Corresponding user not found in Identity Service', 'user_id': str(user_id)}, status=404) # Indicate the missing user
+                    return JsonResponse({'error': 'Corresponding user not found in User Service', 'user_id': str(user_id)}, status=404) # Indicate the missing user
 
                 else:
-                    # Handle other potential errors from Identity Service
-                    print(f"Identity Service returned error {identity_response.status_code}: {identity_response.text}")
+                    # Handle other potential errors from User Service
+                    print(f"User Service returned error {user_response.status_code}: {user_response.text}")
                     return JsonResponse({
-                        'error': 'Failed to fetch user data from Identity Service',
-                        'status_code': identity_response.status_code,
-                        'details': identity_response.text
-                    }, status=identity_response.status_code) # Return the error status from Identity
+                        'error': 'Failed to fetch user data from User Service',
+                        'status_code': user_response.status_code,
+                        'details': user_response.text
+                    }, status=user_response.status_code) # Return the error status from User
 
             except requests.exceptions.RequestException as e:
-                # Handle network errors (e.g., Identity Service is down)
-                print(f"Network error calling Identity Service: {e}")
+                # Handle network errors (e.g., User Service is down)
+                print(f"Network error calling User Service: {e}")
                 return JsonResponse({
-                    'error': 'Communication error with Identity Service',
+                    'error': 'Communication error with User Service',
                     'details': str(e)
                 }, status=500) # Indicate a server-side communication failure
 

@@ -5,7 +5,7 @@ import uuid
 from django.utils import timezone # For timestamp defaults
 
 class Nurse(models.Model):
-    # Primary key links to the User in Identity Service
+    # Primary key links to the User in User Service
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Nurse-specific data
@@ -29,7 +29,7 @@ class Nurse(models.Model):
 class PatientVitals(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # UUIDs referencing the Patient and Nurse users in the Identity Service
+    # UUIDs referencing the Patient and Nurse users in the User Service
     patient_user_id = models.UUIDField(db_index=True)
     nurse_user_id = models.UUIDField(db_index=True)
 

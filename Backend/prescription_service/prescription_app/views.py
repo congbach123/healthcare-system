@@ -20,14 +20,14 @@ def parse_json_body(request):
     except json.JSONDecodeError:
         return None
 
-# Helper function to call Identity Service and return user data or error (same pattern)
-def get_user_from_identity_service(user_id):
-    """Fetches user data from the Identity Service."""
-    identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{user_id}/"
+# Helper function to call User Service and return user data or error (same pattern)
+def get_user_from_user_service(user_id):
+    """Fetches user data from the User Service."""
+    user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{user_id}/"
     try:
-        identity_response = requests.get(identity_service_url)
-        if identity_response.status_code == 200:
-            user_data = identity_response.json()
+        user_response = requests.get(user_service_url)
+        if user_response.status_code == 200:
+            user_data = user_response.json()
             # Remove redundant/potentially sensitive fields for aggregation context
             user_data.pop('id', None)
             user_data.pop('password', None)
@@ -37,14 +37,14 @@ def get_user_from_identity_service(user_id):
             user_data.pop('last_login', None)
             # user_data.pop('is_active', None) # Decide if you want is_active
             return user_data, None # Return data and no error
-        elif identity_response.status_code == 404:
-            return None, f"Identity user not found for ID {user_id}"
+        elif user_response.status_code == 404:
+            return None, f"User user not found for ID {user_id}"
         else:
-            return None, f"Identity Service returned error {identity_response.status_code}: {identity_response.text}"
+            return None, f"User Service returned error {user_response.status_code}: {user_response.text}"
     except requests.exceptions.RequestException as e:
-        return None, f"Network error calling Identity Service for user ID {user_id}: {e}"
+        return None, f"Network error calling User Service for user ID {user_id}: {e}"
     except Exception as e:
-        return None, f"Unexpected error processing Identity Service response for user ID {user_id}: {e}"
+        return None, f"Unexpected error processing User Service response for user ID {user_id}: {e}"
 
 
 # --- Prescription Views ---
@@ -106,8 +106,8 @@ def prescription_list_create_view(request):
              if prescription.fulfilled_by_pharmacist_user_id:
                  pharmacist_ids.add(prescription.fulfilled_by_pharmacist_user_id)
 
-        # --- Aggregate User Identity Data ---
-        # Fetch all needed Identity users in potentially optimized calls (if Identity had bulk GET)
+        # --- Aggregate User User Data ---
+        # Fetch all needed User users in potentially optimized calls (if User had bulk GET)
         # For now, we'll use the helper function which calls one by one, still demonstrating the call.
         # Sticking to the simple helper for demo consistency.
         # In a real system, you'd fetch all unique IDs (patient_ids | doctor_ids | pharmacist_ids)
@@ -133,19 +133,19 @@ def prescription_list_create_view(request):
 
             combined_entry = {**presc_data} # Start with prescription data
 
-            # Aggregate patient, doctor, and pharmacist identity data
-            patient_user_data, patient_error = get_user_from_identity_service(prescription.patient_user_id)
-            doctor_user_data, doctor_error = get_user_from_identity_service(prescription.doctor_user_id)
+            # Aggregate patient, doctor, and pharmacist user data
+            patient_user_data, patient_error = get_user_from_user_service(prescription.patient_user_id)
+            doctor_user_data, doctor_error = get_user_from_user_service(prescription.doctor_user_id)
 
             if patient_user_data: combined_entry['patient'] = patient_user_data
-            elif patient_error: combined_entry['_patient_identity_error'] = patient_error
+            elif patient_error: combined_entry['_patient_user_error'] = patient_error
             if doctor_user_data: combined_entry['doctor'] = doctor_user_data
-            elif doctor_error: combined_entry['_doctor_identity_error'] = doctor_error
+            elif doctor_error: combined_entry['_doctor_user_error'] = doctor_error
 
             if prescription.fulfilled_by_pharmacist_user_id:
-                 pharmacist_user_data, pharmacist_error = get_user_from_identity_service(prescription.fulfilled_by_pharmacist_user_id)
+                 pharmacist_user_data, pharmacist_error = get_user_from_user_service(prescription.fulfilled_by_pharmacist_user_id)
                  if pharmacist_user_data: combined_entry['fulfilled_by_pharmacist'] = pharmacist_user_data
-                 elif pharmacist_error: combined_entry['_pharmacist_identity_error'] = pharmacist_error
+                 elif pharmacist_error: combined_entry['_pharmacist_user_error'] = pharmacist_error
 
 
             aggregated_data.append(combined_entry)
@@ -190,7 +190,7 @@ def prescription_list_create_view(request):
              return JsonResponse({'error': f'Invalid status "{status}". Allowed: {", ".join([choice[0] for choice in Prescription.STATUS_CHOICES])}'}, status=400)
 
         # --- Optional S2S Validation during Creation ---
-        # You could call Identity/Patient/Doctor services here to verify user_ids exist and are of correct type.
+        # You could call User/Patient/Doctor services here to verify user_ids exist and are of correct type.
         # Skipping for basic demo.
         # --- End Optional S2S Validation ---
 
@@ -271,19 +271,19 @@ def prescription_detail_view(request, prescription_id: UUID): # prescription_id 
 
         combined_data = {**presc_data} # Start with prescription data
 
-        # 2. Call Identity Service for patient, doctor, and pharmacist data for aggregation
-        patient_user_data, patient_error = get_user_from_identity_service(prescription.patient_user_id)
-        doctor_user_data, doctor_error = get_user_from_identity_service(prescription.doctor_user_id)
+        # 2. Call User Service for patient, doctor, and pharmacist data for aggregation
+        patient_user_data, patient_error = get_user_from_user_service(prescription.patient_user_id)
+        doctor_user_data, doctor_error = get_user_from_user_service(prescription.doctor_user_id)
 
         if patient_user_data: combined_data['patient'] = patient_user_data
-        elif patient_error: combined_data['_patient_identity_error'] = patient_error
+        elif patient_error: combined_data['_patient_user_error'] = patient_error
         if doctor_user_data: combined_data['doctor'] = doctor_user_data
-        elif doctor_error: combined_data['_doctor_identity_error'] = doctor_error
+        elif doctor_error: combined_data['_doctor_user_error'] = doctor_error
 
         if prescription.fulfilled_by_pharmacist_user_id:
-             pharmacist_user_data, pharmacist_error = get_user_from_identity_service(prescription.fulfilled_by_pharmacist_user_id)
+             pharmacist_user_data, pharmacist_error = get_user_from_user_service(prescription.fulfilled_by_pharmacist_user_id)
              if pharmacist_user_data: combined_data['fulfilled_by_pharmacist'] = pharmacist_user_data
-             elif pharmacist_error: combined_data['_pharmacist_identity_error'] = pharmacist_error
+             elif pharmacist_error: combined_data['_pharmacist_user_error'] = pharmacist_error
 
         return JsonResponse(combined_data)
 
@@ -342,7 +342,7 @@ def prescription_detail_view(request, prescription_id: UUID): # prescription_id 
             prescription.full_clean() # Run model validation
             prescription.save() # Save changes, updated_at is auto-updated
 
-            # Return the updated object data (aggregating identity data)
+            # Return the updated object data (aggregating user data)
             # Re-fetch to ensure updated_at is correct and aggregation is fresh
             updated_prescription = Prescription.objects.get(id=prescription_id) # Re-query
 
@@ -366,19 +366,19 @@ def prescription_detail_view(request, prescription_id: UUID): # prescription_id 
 
             combined_data = {**presc_data} # Start with prescription data
 
-            # Aggregate patient, doctor, and pharmacist identity data
-            patient_user_data, patient_error = get_user_from_identity_service(updated_prescription.patient_user_id)
-            doctor_user_data, doctor_error = get_user_from_identity_service(updated_prescription.doctor_user_id)
+            # Aggregate patient, doctor, and pharmacist user data
+            patient_user_data, patient_error = get_user_from_user_service(updated_prescription.patient_user_id)
+            doctor_user_data, doctor_error = get_user_from_user_service(updated_prescription.doctor_user_id)
 
             if patient_user_data: combined_data['patient'] = patient_user_data
-            elif patient_error: combined_data['_patient_identity_error'] = patient_error
+            elif patient_error: combined_data['_patient_user_error'] = patient_error
             if doctor_user_data: combined_data['doctor'] = doctor_user_data
-            elif doctor_error: combined_data['_doctor_identity_error'] = doctor_error
+            elif doctor_error: combined_data['_doctor_user_error'] = doctor_error
 
             if updated_prescription.fulfilled_by_pharmacist_user_id:
-                 pharmacist_user_data, pharmacist_error = get_user_from_identity_service(updated_prescription.fulfilled_by_pharmacist_user_id)
+                 pharmacist_user_data, pharmacist_error = get_user_from_user_service(updated_prescription.fulfilled_by_pharmacist_user_id)
                  if pharmacist_user_data: combined_data['fulfilled_by_pharmacist'] = pharmacist_user_data
-                 elif pharmacist_error: combined_data['_pharmacist_identity_error'] = pharmacist_error
+                 elif pharmacist_error: combined_data['_pharmacist_user_error'] = pharmacist_error
 
             # Return the updated and aggregated data
             return JsonResponse(combined_data)

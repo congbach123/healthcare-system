@@ -6,7 +6,7 @@ import uuid
 class Pharmacist(models.Model):
     # This UUID field is the primary key for the Pharmacist model.
     # It links directly to the 'id' (UUID) of the corresponding User
-    # in the Identity Service.
+    # in the User Service.
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Pharmacist-specific data
@@ -19,11 +19,11 @@ class Pharmacist(models.Model):
     # pharmacy_location_address = models.TextField(blank=True, null=True)
     # pharmacist_license_expiry_date = models.DateField(null=True, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)    
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        # Without calling Identity, show license or user_id
+        # Without calling User, show license or user_id
         return f"Pharmacist Profile ({self.pharmacy_license_number})"
 
     class Meta:

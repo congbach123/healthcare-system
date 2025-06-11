@@ -35,23 +35,23 @@ services:
       retries: 10
       start_period: 10s
 
-  # --- Identity Service ---
-  identity-service:
+  # --- User Service ---
+  user-service:
     # Build context is the root directory, using the Dockerfile found there
     build:
       context: .
       dockerfile: Dockerfile # Uses the generic Dockerfile
-    container_name: healthcare-identity-service
+    container_name: healthcare-user-service
     # Copy only the service-specific files into the container over the /app COPY in Dockerfile
     # This avoids rebuilding the whole image layer if only one service changes
     volumes:
-      - ./identity_service:/app/identity_service # Mount the code
+      - ./user_service:/app/user_service # Mount the code
     # Install dependencies only for this service's requirements.txt
     # This is done AFTER copying code, so requirements.txt is available
-    command: sh -c "pip install -r identity_service/requirements.txt && python identity_service/manage.py wait_for_db && python identity_service/manage.py migrate --noinput && python identity_service/manage.py runserver 0.0.0.0:8000"
+    command: sh -c "pip install -r user_service/requirements.txt && python user_service/manage.py wait_for_db && python user_service/manage.py migrate --noinput && python user_service/manage.py runserver 0.0.0.0:8000"
     environment:
       # Environment variables for settings.py
-      DB_NAME: db_identity # Specific database name for this service
+      DB_NAME: db_user # Specific database name for this service
       DB_USER: ${DB_USER:-your_user}
       DB_PASSWORD: ${DB_PASSWORD:-your_password}
       DB_HOST: db # Connect to the database service named 'db' in docker-compose
@@ -59,9 +59,9 @@ services:
       SECRET_KEY: ${SECRET_KEY:-a-super-secret-key}
       DEBUG: "True" # Set to False for production
       ALLOWED_HOSTS: "*" # Allow connections from any host in dev
-      # Service URLs - Identity Service doesn't call other specific services
+      # Service URLs - User Service doesn't call other specific services
       # but other services need its URL. We define its *internal* network address here.
-      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity # How OTHER services call Identity
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user # How OTHER services call User
     ports:
       # Map host port 8000 to container port 8000
       # This allows the frontend/Postman to access this service
@@ -69,7 +69,7 @@ services:
     networks:
       - healthcare_network
     depends_on:
-      db: # Identity service depends on the database service
+      db: # User service depends on the database service
         condition: service_healthy # Wait for DB health check to pass
 
   # --- Patient Service ---
@@ -90,8 +90,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-another-secret-key}
       DEBUG: "True"
       ALLOWED_HOSTS: "*"
-      # Service URLs - Patient Service calls Identity
-      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity # How Patient calls Identity
+      # Service URLs - Patient Service calls User
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user # How Patient calls User
     ports:
       - "8001:8000" # Map host port 8001 to container port 8000
     networks:
@@ -99,8 +99,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      identity-service: # Patient service depends on Identity
-        condition: service_started # Wait for Identity container to start
+      user-service: # Patient service depends on User
+        condition: service_started # Wait for User container to start
 
   # --- Doctor Service ---
   doctor-service:
@@ -120,8 +120,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-yet-another-secret}
       DEBUG: "True"
       ALLOWED_HOSTS: "*"
-      # Service URLs - Doctor Service calls Identity
-      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      # Service URLs - Doctor Service calls User
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user
     ports:
       - "8002:8000"
     networks:
@@ -129,7 +129,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      identity-service:
+      user-service:
         condition: service_started
 
   # --- Pharmacist Service ---
@@ -150,8 +150,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-pharma-secret}
       DEBUG: "True"
       ALLOWED_HOSTS: "*"
-      # Service URLs - Pharmacist Service calls Identity and Prescription
-      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      # Service URLs - Pharmacist Service calls User and Prescription
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user
       PRESCRIPTION_SERVICE_BASE_URL: http://prescription-service:8000/api # How Pharmacist calls Prescription
     ports:
       - "8003:8000" # Corrected port mapping for host
@@ -160,7 +160,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      identity-service:
+      user-service:
         condition: service_started
       prescription-service: # Pharmacist calls Prescription
         condition: service_started
@@ -183,8 +183,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-nurse-secret}
       DEBUG: "True"
       ALLOWED_HOSTS: "*"
-      # Service URLs - Nurse Service calls Identity and Patient
-      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      # Service URLs - Nurse Service calls User and Patient
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user
       PATIENT_SERVICE_BASE_URL: http://patient-service:8000/api # How Nurse calls Patient
     ports:
       - "8005:8000"
@@ -193,9 +193,39 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      identity-service:
+      user-service:
         condition: service_started
       patient-service: # Nurse calls Patient
+        condition: service_started
+
+  # --- Appointment Service ---
+  appointment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-appointment-service
+    volumes:
+      - ./appointment_service:/app/appointment_service
+    command: sh -c "pip install -r appointment_service/requirements.txt && python appointment_service/manage.py wait_for_db && python appointment_service/manage.py migrate --noinput && python appointment_service/manage.py runserver 0.0.0.0:8000"
+    environment:
+      DB_NAME: db_appointment
+      DB_USER: ${DB_USER:-your_user}
+      DB_PASSWORD: ${DB_PASSWORD:-your_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:-appointment-secret}
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      # Service URLs - Appointment Service calls User
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user
+    ports:
+      - "8004:8000" # Using port 8004 as it appears to be available
+    networks:
+      - healthcare_network
+    depends_on:
+      db:
+        condition: service_healthy
+      user-service:
         condition: service_started
 
   # --- Lab Service ---
@@ -216,8 +246,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-lab-secret}
       DEBUG: "True"
       ALLOWED_HOSTS: "*"
-      # Service URLs - Lab Service calls Identity
-      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      # Service URLs - Lab Service calls User
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user
     ports:
       - "8006:8000"
     networks:
@@ -225,7 +255,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      identity-service:
+      user-service:
         condition: service_started
 
   # --- Medical Records Service ---
@@ -246,8 +276,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-mrs-secret}
       DEBUG: "True"
       ALLOWED_HOSTS: "*"
-      # Service URLs - MRS calls Identity, Patient, Nurse, Lab, Prescription (when implemented)
-      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      # Service URLs - MRS calls User, Patient, Nurse, Lab, Prescription (when implemented)
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user
       PATIENT_SERVICE_BASE_URL: http://patient-service:8000/api
       NURSE_SERVICE_BASE_URL: http://nurse-service:8000/api # Note: Nurse service URLs start with /api/, not /nurses/ or /vitals/
       LAB_SERVICE_BASE_URL: http://lab-service:8000/api # Note: Lab service URLs start with /api/, not /labtechs/, /orders/, /results/
@@ -259,7 +289,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      identity-service:
+      user-service:
         condition: service_started
       patient-service:
         condition: service_started
@@ -288,8 +318,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-presc-secret}
       DEBUG: "True"
       ALLOWED_HOSTS: "*"
-      # Service URLs - Prescription Service calls Identity
-      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      # Service URLs - Prescription Service calls User
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user
     ports:
       - "8008:8000"
     networks:
@@ -297,7 +327,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      identity-service:
+      user-service:
         condition: service_started
 
   # --- Administrator Service ---
@@ -318,8 +348,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-admin-secret}
       DEBUG: "True"
       ALLOWED_HOSTS: "*"
-      # Service URLs - Admin Service calls Identity
-      IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+      # Service URLs - Admin Service calls User
+      USER_SERVICE_BASE_URL: http://user-service:8000/api/user
     ports:
       - "8009:8000"
     networks:
@@ -327,7 +357,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      identity-service:
+      user-service:
         condition: service_started
 
   # --- Insurance Provider Service (To be implemented) ---
@@ -348,8 +378,8 @@ services:
   #     SECRET_KEY: ${SECRET_KEY:-insurance-secret}
   #     DEBUG: "True"
   #     ALLOWED_HOSTS: "*"
-  #     # Service URLs - Insurance might call Identity, Patient, Medical Records, etc.
-  #     IDENTITY_SERVICE_BASE_URL: http://identity-service:8000/api/identity
+  #     # Service URLs - Insurance might call User, Patient, Medical Records, etc.
+  #     USER_SERVICE_BASE_URL: http://user-service:8000/api/user
   #     PATIENT_SERVICE_BASE_URL: http://patient-service:8000/api
   #     # ... others ...
   #   ports:
@@ -359,7 +389,7 @@ services:
   #   depends_on:
   #     db:
   #       condition: service_healthy
-  #     identity-service:
+  #     user-service:
   #       condition: service_started
   #     patient-service:
   #       condition: service_started

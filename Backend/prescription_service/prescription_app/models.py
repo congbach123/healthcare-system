@@ -23,7 +23,7 @@ class Prescription(models.Model):
     STATUS_CHOICES = (
         ('active', 'Active'),
         ('filled', 'Filled'),
-        ('cancelled', 'Cancelled'),
+        ('cancelled', 'Cancelled'), 
         ('expired', 'Expired'), # Could be set automatically based on duration or date
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', db_index=True)

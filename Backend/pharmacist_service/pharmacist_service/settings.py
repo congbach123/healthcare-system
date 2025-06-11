@@ -91,7 +91,7 @@ DATABASES = {
     }
 }
 
-IDENTITY_SERVICE_BASE_URL = os.environ.get('IDENTITY_SERVICE_BASE_URL', 'http://localhost:8000/api/identity') # <-- Read from env
+USER_SERVICE_BASE_URL = os.environ.get('USER_SERVICE_BASE_URL', 'http://localhost:8000/api/user') # <-- Read from env
 PRESCRIPTION_SERVICE_BASE_URL = os.environ.get('PRESCRIPTION_SERVICE_BASE_URL', 'http://localhost:8008/api') # <-- Read from env
 
 

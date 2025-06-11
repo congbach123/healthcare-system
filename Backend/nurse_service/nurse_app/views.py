@@ -21,14 +21,14 @@ def parse_json_body(request):
     except json.JSONDecodeError:
         return None
 
-# Helper function to call Identity Service and return user data or error (same)
-def get_user_from_identity_service(user_id):
-    """Fetches user data from the Identity Service."""
-    identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{user_id}/"
+# Helper function to call User Service and return user data or error (same)
+def get_user_from_user_service(user_id):
+    """Fetches user data from the User Service."""
+    user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{user_id}/"
     try:
-        identity_response = requests.get(identity_service_url)
-        if identity_response.status_code == 200:
-            user_data = identity_response.json()
+        user_response = requests.get(user_service_url)
+        if user_response.status_code == 200:
+            user_data = user_response.json()
             # Remove redundant/potentially sensitive fields
             user_data.pop('id', None)
             user_data.pop('password', None)
@@ -38,14 +38,14 @@ def get_user_from_identity_service(user_id):
             user_data.pop('last_login', None)
             # user_data.pop('is_active', None) # Decide if you want is_active
             return user_data, None
-        elif identity_response.status_code == 404:
-            return None, f"Identity user not found for ID {user_id}"
+        elif user_response.status_code == 404:
+            return None, f"User user not found for ID {user_id}"
         else:
-            return None, f"Identity Service returned error {identity_response.status_code}: {identity_response.text}"
+            return None, f"User Service returned error {user_response.status_code}: {user_response.text}"
     except requests.exceptions.RequestException as e:
-        return None, f"Network error calling Identity Service for user ID {user_id}: {e}"
+        return None, f"Network error calling User Service for user ID {user_id}: {e}"
     except Exception as e:
-        return None, f"Unexpected error processing Identity Service response for user ID {user_id}: {e}"
+        return None, f"Unexpected error processing User Service response for user ID {user_id}: {e}"
 
 # --- Nurse Profile Views (Keep these as they are - Checkpoint 26 passed) ---
 @csrf_exempt
@@ -60,12 +60,12 @@ def nurse_profile_list_create_view(request):
                 'created_at': nurse.created_at.isoformat() if nurse.created_at else None,
                 'updated_at': nurse.updated_at.isoformat() if nurse.updated_at else None,
             }
-            user_data, identity_fetch_error = get_user_from_identity_service(nurse.user_id)
+            user_data, user_fetch_error = get_user_from_user_service(nurse.user_id)
             combined_data_entry = {**nurse_data}
             if user_data:
                 combined_data_entry = {**user_data, **combined_data_entry}
-            if identity_fetch_error:
-                 combined_data_entry['_identity_error'] = identity_fetch_error
+            if user_fetch_error:
+                 combined_data_entry['_user_error'] = user_fetch_error
             aggregated_data.append(combined_data_entry)
         response_json_string = json.dumps(aggregated_data)
         return HttpResponse(response_json_string, content_type='application/json')
@@ -112,12 +112,12 @@ def nurse_profile_detail_view(request, user_id: UUID):
                 'created_at': nurse.created_at.isoformat() if nurse.created_at else None,
                 'updated_at': nurse.updated_at.isoformat() if nurse.updated_at else None,
             }
-            user_data, identity_fetch_error = get_user_from_identity_service(nurse.user_id)
+            user_data, user_fetch_error = get_user_from_user_service(nurse.user_id)
             combined_data = {**nurse_data}
             if user_data:
                 combined_data = {**user_data, **combined_data}
-            if identity_fetch_error:
-                 combined_data['_identity_error'] = identity_fetch_error
+            if user_fetch_error:
+                 combined_data['_user_error'] = user_fetch_error
             return JsonResponse(combined_data)
         except Nurse.DoesNotExist:
             return JsonResponse({'error': 'Nurse profile not found'}, status=404)
@@ -184,9 +184,9 @@ def patient_vitals_list_create_view(request):
              nurse_ids.add(vital.nurse_user_id)
 
         # --- Optimization Note ---
-        # For large lists, calling get_user_from_identity_service inside the loop (N*2 calls) is inefficient.
-        # A better approach (if Identity Service supported it) would be to make *batch* requests:
-        # e.g., POST /api/identity/users/bulk/ with a list of IDs.
+        # For large lists, calling get_user_from_user_service inside the loop (N*2 calls) is inefficient.
+        # A better approach (if User Service supported it) would be to make *batch* requests:
+        # e.g., POST /api/user/users/bulk/ with a list of IDs.
         # Since we don't have a bulk endpoint, we'll stick to calling one by one for the demo,
         # but this is a performance bottleneck in real microservices.
         # --- End Optimization Note ---
@@ -198,14 +198,14 @@ def patient_vitals_list_create_view(request):
         nurse_errors = {}
 
         for p_id in patient_ids:
-            user_data, err = get_user_from_identity_service(p_id)
+            user_data, err = get_user_from_user_service(p_id)
             if user_data:
                 patient_users[p_id] = user_data
             else:
                 patient_errors[p_id] = err
 
         for n_id in nurse_ids:
-            user_data, err = get_user_from_identity_service(n_id)
+            user_data, err = get_user_from_user_service(n_id)
             if user_data:
                 nurse_users[n_id] = user_data
             else:
@@ -240,12 +240,12 @@ def patient_vitals_list_create_view(request):
             if patient_user_data:
                 combined_entry['patient'] = patient_user_data
             elif patient_error:
-                combined_entry['_patient_identity_error'] = patient_error
+                combined_entry['_patient_user_error'] = patient_error
 
             if nurse_user_data:
                 combined_entry['nurse'] = nurse_user_data
             elif nurse_error:
-                combined_entry['_nurse_identity_error'] = nurse_error
+                combined_entry['_nurse_user_error'] = nurse_error
 
             aggregated_data.append(combined_entry)
 
@@ -363,21 +363,21 @@ def patient_vitals_detail_view(request, vitals_id: UUID): # vitals_id is UUID ob
             'updated_at': vital.updated_at.isoformat() if vital.updated_at else None,
         }
 
-        # Call Identity Service for patient and nurse data for aggregation
-        patient_user_data, patient_error = get_user_from_identity_service(vital.patient_user_id)
-        nurse_user_data, nurse_error = get_user_from_identity_service(vital.nurse_user_id)
+        # Call User Service for patient and nurse data for aggregation
+        patient_user_data, patient_error = get_user_from_user_service(vital.patient_user_id)
+        nurse_user_data, nurse_error = get_user_from_user_service(vital.nurse_user_id)
 
         combined_data = {**vital_data}
 
         if patient_user_data:
             combined_data['patient'] = patient_user_data
         elif patient_error:
-            combined_data['_patient_identity_error'] = patient_error
+            combined_data['_patient_user_error'] = patient_error
 
         if nurse_user_data:
             combined_data['nurse'] = nurse_user_data
         elif nurse_error:
-            combined_data['_nurse_identity_error'] = nurse_error
+            combined_data['_nurse_user_error'] = nurse_error
 
         return JsonResponse(combined_data)
 
@@ -418,8 +418,8 @@ def patient_vitals_detail_view(request, vitals_id: UUID): # vitals_id is UUID ob
             # Re-fetch and aggregate for the response
             updated_vital = PatientVitals.objects.get(id=vitals_id) # Use the fetched object to save, then re-query to ensure updated_at is fresh
 
-            patient_user_data, patient_error = get_user_from_identity_service(updated_vital.patient_user_id)
-            nurse_user_data, nurse_error = get_user_from_identity_service(updated_vital.nurse_user_id)
+            patient_user_data, patient_error = get_user_from_user_service(updated_vital.patient_user_id)
+            nurse_user_data, nurse_error = get_user_from_user_service(updated_vital.nurse_user_id)
 
             combined_data = {
                 'id': str(updated_vital.id),
@@ -438,9 +438,9 @@ def patient_vitals_detail_view(request, vitals_id: UUID): # vitals_id is UUID ob
             }
 
             if patient_user_data: combined_data['patient'] = patient_user_data
-            elif patient_error: combined_data['_patient_identity_error'] = patient_error
+            elif patient_error: combined_data['_patient_user_error'] = patient_error
             if nurse_user_data: combined_data['nurse'] = nurse_user_data
-            elif nurse_error: combined_data['_nurse_identity_error'] = nurse_error
+            elif nurse_error: combined_data['_nurse_user_error'] = nurse_error
 
             return JsonResponse(combined_data)
 

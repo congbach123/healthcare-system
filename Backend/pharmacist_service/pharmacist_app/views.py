@@ -20,15 +20,15 @@ def parse_json_body(request):
     except json.JSONDecodeError:
         return None
 
-# Helper function to call Identity Service and return user data or error (same pattern)
+# Helper function to call User Service and return user data or error (same pattern)
 # (Ensure this helper is present in your file)
-def get_user_from_identity_service(user_id):
-    """Fetches user data from the Identity Service."""
-    identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{user_id}/"
+def get_user_from_user_service(user_id):
+    """Fetches user data from the User Service."""
+    user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{user_id}/"
     try:
-        identity_response = requests.get(identity_service_url)
-        if identity_response.status_code == 200:
-            user_data = identity_response.json()
+        user_response = requests.get(user_service_url)
+        if user_response.status_code == 200:
+            user_data = user_response.json()
             # Remove redundant/potentially sensitive fields for aggregation context
             user_data.pop('id', None)
             user_data.pop('password', None)
@@ -37,14 +37,14 @@ def get_user_from_identity_service(user_id):
             user_data.pop('date_joined', None)
             user_data.pop('last_login', None)
             return user_data, None # Return data and no error
-        elif identity_response.status_code == 404:
-            return None, f"Identity user not found for ID {user_id}"
+        elif user_response.status_code == 404:
+            return None, f"User user not found for ID {user_id}"
         else:
-            return None, f"Identity Service returned error {identity_response.status_code}: {identity_response.text}"
+            return None, f"User Service returned error {user_response.status_code}: {user_response.text}"
     except requests.exceptions.RequestException as e:
-        return None, f"Network error calling Identity Service for user ID {user_id}: {e}"
+        return None, f"Network error calling User Service for user ID {user_id}: {e}"
     except Exception as e:
-        return None, f"Unexpected error processing Identity Service response for user ID {user_id}: {e}"
+        return None, f"Unexpected error processing User Service response for user ID {user_id}: {e}"
 
 
 # Helper function to call other services' PUT/PATCH endpoints (Need this for the fulfillment view)
@@ -92,15 +92,15 @@ def pharmacist_list_create_view(request):
                  'updated_at': pharmacist.updated_at.isoformat() if pharmacist.updated_at else None, # Datetime to string
              }
 
-             # Aggregate identity data
-             user_data, identity_fetch_error = get_user_from_identity_service(pharmacist.user_id)
+             # Aggregate user data
+             user_data, user_fetch_error = get_user_from_user_service(pharmacist.user_id)
 
              combined_data_entry = {**pharmacist_data}
              if user_data:
                  combined_data_entry = {**user_data, **combined_data_entry} # Merge user data first, pharmacist data second
 
-             if identity_fetch_error:
-                  combined_data_entry['_identity_error'] = identity_fetch_error
+             if user_fetch_error:
+                  combined_data_entry['_user_error'] = user_fetch_error
 
              aggregated_data.append(combined_data_entry)
 
@@ -115,7 +115,7 @@ def pharmacist_list_create_view(request):
 
         user_id_str = data.get('user_id')
         if not user_id_str:
-             return JsonResponse({'error': 'user_id is required (must be a UUID string from the Identity Service)'}, status=400)
+             return JsonResponse({'error': 'user_id is required (must be a UUID string from the User Service)'}, status=400)
 
         try:
              user_id_uuid = UUID(user_id_str)
@@ -176,15 +176,15 @@ def pharmacist_detail_view(request, user_id: UUID):
                 'updated_at': pharmacist.updated_at.isoformat() if pharmacist.updated_at else None, # Datetime to string
             }
 
-            identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{user_id}/"
-            print(f"Pharmacist Service calling Identity Service: {identity_service_url}")
+            user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{user_id}/"
+            print(f"Pharmacist Service calling User Service: {user_service_url}")
 
             try:
-                identity_response = requests.get(identity_service_url)
+                user_response = requests.get(user_service_url)
 
-                if identity_response.status_code == 200:
-                    user_data = identity_response.json()
-                    print("Identity Service call successful.")
+                if user_response.status_code == 200:
+                    user_data = user_response.json()
+                    print("User Service call successful.")
                     if 'id' in user_data:
                          del user_data['id']
                     user_data.pop('date_joined', None)
@@ -194,24 +194,24 @@ def pharmacist_detail_view(request, user_id: UUID):
 
                     return JsonResponse(combined_data)
 
-                elif identity_response.status_code == 404:
-                    print(f"Identity Service returned 404 for user_id {user_id}. User likely deleted from Identity.")
+                elif user_response.status_code == 404:
+                    print(f"User Service returned 404 for user_id {user_id}. User likely deleted from User.")
                     response_data = pharmacist_data.copy()
-                    response_data['error'] = 'Corresponding user not found in Identity Service'
+                    response_data['error'] = 'Corresponding user not found in User Service'
                     return JsonResponse(response_data, status=404)
 
                 else:
-                    print(f"Identity Service returned error {identity_response.status_code}: {identity_response.text}")
+                    print(f"User Service returned error {user_response.status_code}: {user_response.text}")
                     return JsonResponse({
-                        'error': 'Failed to fetch user data from Identity Service',
-                        'status_code': identity_response.status_code,
-                        'details': identity_response.text
-                    }, status=identity_response.status_code)
+                        'error': 'Failed to fetch user data from User Service',
+                        'status_code': user_response.status_code,
+                        'details': user_response.text
+                    }, status=user_response.status_code)
 
             except requests.exceptions.RequestException as e:
-                print(f"Network error calling Identity Service: {e}")
+                print(f"Network error calling User Service: {e}")
                 return JsonResponse({
-                    'error': 'Communication error with Identity Service',
+                    'error': 'Communication error with User Service',
                     'details': str(e)
                 }, status=500)
 
@@ -257,8 +257,8 @@ def fulfill_prescription_view(request):
             return JsonResponse({'error': 'Invalid UUID format for prescription_id or pharmacist_user_id'}, status=400)
 
         # --- Optional Validation ---
-        # You could check if the pharmacist_user_id exists and is of type 'pharmacist' in Identity Service.
-        # user_data, err = get_user_from_identity_service(pharmacist_user_id_uuid)
+        # You could check if the pharmacist_user_id exists and is of type 'pharmacist' in User Service.
+        # user_data, err = get_user_from_user_service(pharmacist_user_id_uuid)
         # if err or (user_data and user_data.get('user_type') != 'pharmacist'):
         #     return JsonResponse({'error': f'Invalid pharmacist_user_id or user is not a pharmacist: {err or "Wrong user type"}'}, status=400)
         # Skipping for basic demo.

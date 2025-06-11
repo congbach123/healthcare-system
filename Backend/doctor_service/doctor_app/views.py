@@ -36,46 +36,46 @@ def doctor_list_create_view(request):
                 'updated_at': doctor.updated_at.isoformat() if doctor.updated_at else None,
             }
 
-            # 2. Call the Identity Service to get common user data for this doctor's user_id
-            identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{doctor.user_id}/"
-            # print(f"Doctor Service listing calling Identity Service for user_id {doctor.user_id}: {identity_service_url}") # Uncomment for verbose logging
+            # 2. Call the User Service to get common user data for this doctor's user_id
+            user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{doctor.user_id}/"
+            # print(f"Doctor Service listing calling User Service for user_id {doctor.user_id}: {user_service_url}") # Uncomment for verbose logging
 
             user_data = {} # Dictionary to hold common user data
-            identity_fetch_error = None # Flag to indicate if fetching identity data failed
+            user_fetch_error = None # Flag to indicate if fetching user data failed
 
             try:
-                identity_response = requests.get(identity_service_url)
+                user_response = requests.get(user_service_url)
 
-                if identity_response.status_code == 200:
-                    user_data = identity_response.json()
-                    # print(f"Identity Service call successful for user_id {doctor.user_id}.") # Uncomment for verbose logging
-                    # Remove fields from Identity data that might be redundant or confusing when merged
+                if user_response.status_code == 200:
+                    user_data = user_response.json()
+                    # print(f"User Service call successful for user_id {doctor.user_id}.") # Uncomment for verbose logging
+                    # Remove fields from User data that might be redundant or confusing when merged
                     user_data.pop('id', None) # user_id is already in doctor_data
                     user_data.pop('date_joined', None) # Timestamps are usually more relevant from the profile creation
                     user_data.pop('last_login', None)
 
-                elif identity_response.status_code == 404:
-                    identity_fetch_error = f"Identity user not found for ID {doctor.user_id}"
-                    print(f"WARNING: {identity_fetch_error}") # Log the warning on the server
+                elif user_response.status_code == 404:
+                    user_fetch_error = f"User user not found for ID {doctor.user_id}"
+                    print(f"WARNING: {user_fetch_error}") # Log the warning on the server
                     # Continue processing, but user_data will be empty
 
                 else:
-                    identity_fetch_error = f"Identity Service returned error {identity_response.status_code} for user_id {doctor.user_id}"
-                    print(f"ERROR: {identity_fetch_error}: {identity_response.text}") # Log the error
+                    user_fetch_error = f"User Service returned error {user_response.status_code} for user_id {doctor.user_id}"
+                    print(f"ERROR: {user_fetch_error}: {user_response.text}") # Log the error
                     # Continue processing, but user_data will be empty
 
             except requests.exceptions.RequestException as e:
-                identity_fetch_error = f"Network error calling Identity Service for user_id {doctor.user_id}: {e}"
-                print(f"ERROR: {identity_fetch_error}") # Log the network error
+                user_fetch_error = f"Network error calling User Service for user_id {doctor.user_id}: {e}"
+                print(f"ERROR: {user_fetch_error}") # Log the network error
                 # Continue processing, but user_data will be empty
 
             # 3. Combine the data from the Doctor profile and the fetched user data
             # Merge user_data into doctor_data. doctor_data keys take precedence if duplicated.
             combined_data_entry = {**user_data, **doctor_data}
 
-            # 4. Optionally add an error indicator if identity data couldn't be fetched
-            if identity_fetch_error:
-                 combined_data_entry['_identity_error'] = identity_fetch_error
+            # 4. Optionally add an error indicator if user data couldn't be fetched
+            if user_fetch_error:
+                 combined_data_entry['_user_error'] = user_fetch_error
 
             # Add the combined entry to the list
             aggregated_data.append(combined_data_entry)
@@ -94,7 +94,7 @@ def doctor_list_create_view(request):
 
         user_id_str = data.get('user_id')
         if not user_id_str:
-             return JsonResponse({'error': 'user_id is required (must be a UUID string from the Identity Service)'}, status=400)
+             return JsonResponse({'error': 'user_id is required (must be a UUID string from the User Service)'}, status=400)
 
         try:
              user_id_uuid = UUID(user_id_str)
@@ -137,7 +137,7 @@ def doctor_list_create_view(request):
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 
-# Detail view for getting a single doctor profile by their user_id, aggregating from Identity Service
+# Detail view for getting a single doctor profile by their user_id, aggregating from User Service
 def doctor_detail_view(request, user_id: UUID): # user_id is a UUID object from URL converter
     if request.method == 'GET':
         try:
@@ -154,16 +154,16 @@ def doctor_detail_view(request, user_id: UUID): # user_id is a UUID object from 
                 'updated_at': doctor.updated_at.isoformat() if doctor.updated_at else None,
             }
 
-            # 2. Call the Identity Service to get common user data
-            identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{user_id}/"
-            print(f"Doctor Service calling Identity Service: {identity_service_url}") # Log for demo
+            # 2. Call the User Service to get common user data
+            user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{user_id}/"
+            print(f"Doctor Service calling User Service: {user_service_url}") # Log for demo
 
             try:
-                identity_response = requests.get(identity_service_url)
+                user_response = requests.get(user_service_url)
 
-                if identity_response.status_code == 200:
-                    user_data = identity_response.json()
-                    print("Identity Service call successful.") # Log for demo
+                if user_response.status_code == 200:
+                    user_data = user_response.json()
+                    print("User Service call successful.") # Log for demo
                     # Remove the 'id' from user_data as we use doctor_data['user_id']
                     if 'id' in user_data:
                          del user_data['id']
@@ -178,31 +178,31 @@ def doctor_detail_view(request, user_id: UUID): # user_id is a UUID object from 
 
                     return JsonResponse(combined_data)
 
-                elif identity_response.status_code == 404:
-                    print(f"Identity Service returned 404 for user_id {user_id}. User likely deleted from Identity.")
-                    # Return the doctor data found, indicating the identity data is missing
+                elif user_response.status_code == 404:
+                    print(f"User Service returned 404 for user_id {user_id}. User likely deleted from User.")
+                    # Return the doctor data found, indicating the user data is missing
                     # Or return an error, depending on desired strictness. Returning the found data is often more robust.
-                    # Let's return the doctor data along with an error message about missing identity.
-                    response = JsonResponse({'error': 'Corresponding user not found in Identity Service'}, status=404)
+                    # Let's return the doctor data along with an error message about missing user.
+                    response = JsonResponse({'error': 'Corresponding user not found in User Service'}, status=404)
                     # You might attach the partial data, but returning 404 is clearer about the overall state.
                     # Alternatively, return 200 with partial data + warning flag:
-                    # doctor_data['identity_missing'] = True
+                    # doctor_data['user_missing'] = True
                     # return JsonResponse(doctor_data)
                     return response
 
 
                 else:
-                    print(f"Identity Service returned error {identity_response.status_code}: {identity_response.text}")
+                    print(f"User Service returned error {user_response.status_code}: {user_response.text}")
                     return JsonResponse({
-                        'error': 'Failed to fetch user data from Identity Service',
-                        'status_code': identity_response.status_code,
-                        'details': identity_response.text
-                    }, status=identity_response.status_code)
+                        'error': 'Failed to fetch user data from User Service',
+                        'status_code': user_response.status_code,
+                        'details': user_response.text
+                    }, status=user_response.status_code)
 
             except requests.exceptions.RequestException as e:
-                print(f"Network error calling Identity Service: {e}")
+                print(f"Network error calling User Service: {e}")
                 return JsonResponse({
-                    'error': 'Communication error with Identity Service',
+                    'error': 'Communication error with User Service',
                     'details': str(e)
                 }, status=500)
 
@@ -218,8 +218,16 @@ def doctor_detail_view(request, user_id: UUID): # user_id is a UUID object from 
     # Handle methods other than GET
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
-# --- Add update/delete views (PUT/PATCH/DELETE) here later ---
-# @csrf_exempt
-# def doctor_update_view(request, user_id: UUID): ...
-# @csrf_exempt
-# def doctor_delete_view(request, user_id: UUID): ...
+@csrf_exempt
+def doctor_update_view(request, user_id: UUID):
+    if request.method == 'PUT':
+        # Implementation for updating doctor
+        pass
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+@csrf_exempt  
+def doctor_delete_view(request, user_id: UUID):
+    if request.method == 'DELETE':
+        # Implementation for deleting doctor
+        pass
+    return JsonResponse({'error': 'Method not allowed'}, status=405)

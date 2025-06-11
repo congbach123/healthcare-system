@@ -20,15 +20,15 @@ def parse_json_body(request):
     except json.JSONDecodeError:
         return None
 
-# Helper function to call Identity Service and return user data or error
-def get_user_from_identity_service(user_id):
-    """Fetches user data from the Identity Service."""
-    identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{user_id}/"
+# Helper function to call User Service and return user data or error
+def get_user_from_user_service(user_id):
+    """Fetches user data from the User Service."""
+    user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{user_id}/"
     try:
-        identity_response = requests.get(identity_service_url)
-        if identity_response.status_code == 200:
-            user_data = identity_response.json()
-            # Remove redundant fields from Identity data for merging
+        user_response = requests.get(user_service_url)
+        if user_response.status_code == 200:
+            user_data = user_response.json()
+            # Remove redundant fields from User data for merging
             user_data.pop('id', None)
             user_data.pop('date_joined', None)
             user_data.pop('last_login', None)
@@ -39,14 +39,14 @@ def get_user_from_identity_service(user_id):
             user_data.pop('is_active', None) # Maybe keep is_active? Decision point.
 
             return user_data, None # Return data and no error
-        elif identity_response.status_code == 404:
-            return None, f"Identity user not found for ID {user_id}"
+        elif user_response.status_code == 404:
+            return None, f"User user not found for ID {user_id}"
         else:
-            return None, f"Identity Service returned error {identity_response.status_code}: {identity_response.text}"
+            return None, f"User Service returned error {user_response.status_code}: {user_response.text}"
     except requests.exceptions.RequestException as e:
-        return None, f"Network error calling Identity Service for user ID {user_id}: {e}"
+        return None, f"Network error calling User Service for user ID {user_id}: {e}"
     except Exception as e:
-        return None, f"Unexpected error processing Identity Service response for user ID {user_id}: {e}"
+        return None, f"Unexpected error processing User Service response for user ID {user_id}: {e}"
 
 
 @csrf_exempt # WARNING: Disable CSRF protection for API POST.
@@ -110,9 +110,9 @@ def appointment_list_create_view(request):
                 'updated_at': appointment.updated_at.isoformat() if appointment.updated_at else None,
             }
 
-            # 2. Call Identity Service for patient and doctor data
-            patient_user_data, patient_error = get_user_from_identity_service(appointment.patient_user_id)
-            doctor_user_data, doctor_error = get_user_from_identity_service(appointment.doctor_user_id)
+            # 2. Call User Service for patient and doctor data
+            patient_user_data, patient_error = get_user_from_user_service(appointment.patient_user_id)
+            doctor_user_data, doctor_error = get_user_from_user_service(appointment.doctor_user_id)
 
             # 3. Combine data
             combined_entry = {**appointment_data} # Start with appointment data
@@ -120,12 +120,12 @@ def appointment_list_create_view(request):
             if patient_user_data:
                 combined_entry['patient'] = patient_user_data
             elif patient_error:
-                combined_entry['_patient_identity_error'] = patient_error
+                combined_entry['_patient_user_error'] = patient_error
 
             if doctor_user_data:
                 combined_entry['doctor'] = doctor_user_data
             elif doctor_error:
-                combined_entry['_doctor_identity_error'] = doctor_error
+                combined_entry['_doctor_user_error'] = doctor_error
 
             aggregated_data.append(combined_entry)
 
@@ -176,16 +176,16 @@ def appointment_list_create_view(request):
              return JsonResponse({'error': f'Invalid status "{status}". Allowed: {", ".join([choice[0] for choice in Appointment.STATUS_CHOICES])}'}, status=400)
 
         # --- Optional S2S Validation during Creation ---
-        # You could call Identity/Patient/Doctor services here to verify the user_ids exist and are of the correct type.
+        # You could call User/Patient/Doctor services here to verify the user_ids exist and are of the correct type.
         # For example:
-        # user_data, err = get_user_from_identity_service(patient_user_id_uuid)
+        # user_data, err = get_user_from_user_service(patient_user_id_uuid)
         # if err or (user_data and user_data.get('user_type') != 'patient'):
         #    return JsonResponse({'error': f'Invalid or non-patient user_id provided for patient_user_id: {err or "Wrong user type"}'}, status=400)
-        # user_data, err = get_user_from_identity_service(doctor_user_id_uuid)
+        # user_data, err = get_user_from_user_service(doctor_user_id_uuid)
         # if err or (user_data and user_data.get('user_type') != 'doctor'):
         #    return JsonResponse({'error': f'Invalid or non-doctor user_id provided for doctor_user_id: {err or "Wrong user type"}'}, status=400)
         # This adds latency but increases data integrity. For a basic demo, we can skip this validation here
-        # and assume the user_ids are valid if they exist in Identity at retrieval time.
+        # and assume the user_ids are valid if they exist in User at retrieval time.
         # --- End Optional S2S Validation ---
 
 
@@ -246,9 +246,9 @@ def appointment_detail_view(request, appointment_id: UUID): # appointment_id is 
             # 1. Fetch the appointment from the Appointment Service database
             appointment = Appointment.objects.get(id=appointment_id)
 
-            # 2. Call Identity Service for patient and doctor data
-            patient_user_data, patient_error = get_user_from_identity_service(appointment.patient_user_id)
-            doctor_user_data, doctor_error = get_user_from_identity_service(appointment.doctor_user_id)
+            # 2. Call User Service for patient and doctor data
+            patient_user_data, patient_error = get_user_from_user_service(appointment.patient_user_id)
+            doctor_user_data, doctor_error = get_user_from_user_service(appointment.doctor_user_id)
 
             # 3. Aggregate data
             combined_data = {
@@ -266,12 +266,12 @@ def appointment_detail_view(request, appointment_id: UUID): # appointment_id is 
             if patient_user_data:
                 combined_data['patient'] = patient_user_data
             elif patient_error:
-                 combined_data['_patient_identity_error'] = patient_error
+                 combined_data['_patient_user_error'] = patient_error
 
             if doctor_user_data:
                 combined_data['doctor'] = doctor_user_data
             elif doctor_error:
-                 combined_data['_doctor_identity_error'] = doctor_error
+                 combined_data['_doctor_user_error'] = doctor_error
 
             return JsonResponse(combined_data)
 
@@ -308,10 +308,10 @@ def appointment_detail_view(request, appointment_id: UUID): # appointment_id is 
              appointment.save() # Save changes
 
              # Return updated object (can re-fetch to get updated_at or manually construct)
-             # Re-fetching ensures updated_at is correct and we aggregate identity data again
+             # Re-fetching ensures updated_at is correct and we aggregate user data again
              updated_appointment = Appointment.objects.get(id=appointment_id)
-             patient_user_data, patient_error = get_user_from_identity_service(updated_appointment.patient_user_id)
-             doctor_user_data, doctor_error = get_user_from_identity_service(updated_appointment.doctor_user_id)
+             patient_user_data, patient_error = get_user_from_user_service(updated_appointment.patient_user_id)
+             doctor_user_data, doctor_error = get_user_from_user_service(updated_appointment.doctor_user_id)
 
              combined_data = {
                  'id': str(updated_appointment.id),
@@ -325,9 +325,9 @@ def appointment_detail_view(request, appointment_id: UUID): # appointment_id is 
                  'updated_at': updated_appointment.updated_at.isoformat() if updated_appointment.updated_at else None,
              }
              if patient_user_data: combined_data['patient'] = patient_user_data
-             elif patient_error: combined_data['_patient_identity_error'] = patient_error
+             elif patient_error: combined_data['_patient_user_error'] = patient_error
              if doctor_user_data: combined_data['doctor'] = doctor_user_data
-             elif doctor_error: combined_data['_doctor_identity_error'] = doctor_error
+             elif doctor_error: combined_data['_doctor_user_error'] = doctor_error
 
              return JsonResponse(combined_data)
 

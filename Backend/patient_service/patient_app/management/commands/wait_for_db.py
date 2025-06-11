@@ -1,4 +1,4 @@
-# healthcare_microservices/identity_service/identity_app/management/commands/wait_for_db.py
+# healthcare_microservices/user_service/user_app/management/commands/wait_for_db.py
 
 import time
 from django.db import connections

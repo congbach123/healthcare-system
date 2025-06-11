@@ -20,14 +20,14 @@ def parse_json_body(request):
     except json.JSONDecodeError:
         return None
 
-# Helper function to call Identity Service and return user data or error (same)
-def get_user_from_identity_service(user_id):
-    """Fetches user data from the Identity Service."""
-    identity_service_url = f"{settings.IDENTITY_SERVICE_BASE_URL}/users/{user_id}/"
+# Helper function to call User Service and return user data or error (same)
+def get_user_from_user_service(user_id):
+    """Fetches user data from the User Service."""
+    user_service_url = f"{settings.USER_SERVICE_BASE_URL}/users/{user_id}/"
     try:
-        identity_response = requests.get(identity_service_url)
-        if identity_response.status_code == 200:
-            user_data = identity_response.json()
+        user_response = requests.get(user_service_url)
+        if user_response.status_code == 200:
+            user_data = user_response.json()
             # Remove redundant/potentially sensitive fields
             user_data.pop('id', None)
             user_data.pop('password', None)
@@ -37,14 +37,14 @@ def get_user_from_identity_service(user_id):
             user_data.pop('last_login', None)
             # user_data.pop('is_active', None) # Decide if you want is_active
             return user_data, None
-        elif identity_response.status_code == 404:
-            return None, f"Identity user not found for ID {user_id}"
+        elif user_response.status_code == 404:
+            return None, f"User user not found for ID {user_id}"
         else:
-            return None, f"Identity Service returned error {identity_response.status_code}: {identity_response.text}"
+            return None, f"User Service returned error {user_response.status_code}: {user_response.text}"
     except requests.exceptions.RequestException as e:
-        return None, f"Network error calling Identity Service for user ID {user_id}: {e}"
+        return None, f"Network error calling User Service for user ID {user_id}: {e}"
     except Exception as e:
-        return None, f"Unexpected error processing Identity Service response for user ID {user_id}: {e}"
+        return None, f"Unexpected error processing User Service response for user ID {user_id}: {e}"
 
 # --- Lab Technician Profile Views ---
 @csrf_exempt
@@ -61,14 +61,14 @@ def lab_technician_profile_list_create_view(request):
                 'updated_at': tech.updated_at.isoformat() if tech.updated_at else None,
             }
 
-            user_data, identity_fetch_error = get_user_from_identity_service(tech.user_id)
+            user_data, user_fetch_error = get_user_from_user_service(tech.user_id)
 
             combined_data_entry = {**tech_data}
             if user_data:
                 combined_data_entry = {**user_data, **combined_data_entry}
 
-            if identity_fetch_error:
-                 combined_data_entry['_identity_error'] = identity_fetch_error
+            if user_fetch_error:
+                 combined_data_entry['_user_error'] = user_fetch_error
 
             aggregated_data.append(combined_data_entry)
 
@@ -125,14 +125,14 @@ def lab_technician_profile_detail_view(request, user_id: UUID):
                 'updated_at': tech.updated_at.isoformat() if tech.updated_at else None,
             }
 
-            user_data, identity_fetch_error = get_user_from_identity_service(tech.user_id)
+            user_data, user_fetch_error = get_user_from_user_service(tech.user_id)
 
             combined_data = {**tech_data}
             if user_data:
                 combined_data = {**user_data, **combined_data}
 
-            if identity_fetch_error:
-                 combined_data['_identity_error'] = identity_fetch_error
+            if user_fetch_error:
+                 combined_data['_user_error'] = user_fetch_error
 
             return JsonResponse(combined_data)
 
@@ -196,15 +196,15 @@ def lab_order_list_create_view(request):
                 'updated_at': order.updated_at.isoformat() if order.updated_at else None,
             }
 
-            # Aggregate patient and doctor identity data
-            patient_user_data, patient_error = get_user_from_identity_service(order.patient_user_id)
-            doctor_user_data, doctor_error = get_user_from_identity_service(order.doctor_user_id)
+            # Aggregate patient and doctor user data
+            patient_user_data, patient_error = get_user_from_user_service(order.patient_user_id)
+            doctor_user_data, doctor_error = get_user_from_user_service(order.doctor_user_id)
 
             combined_entry = {**order_data}
             if patient_user_data: combined_entry['patient'] = patient_user_data
-            elif patient_error: combined_entry['_patient_identity_error'] = patient_error
+            elif patient_error: combined_entry['_patient_user_error'] = patient_error
             if doctor_user_data: combined_entry['doctor'] = doctor_user_data
-            elif doctor_error: combined_entry['_doctor_identity_error'] = doctor_error
+            elif doctor_error: combined_entry['_doctor_user_error'] = doctor_error
 
             aggregated_data.append(combined_entry)
 
@@ -288,14 +288,14 @@ def lab_order_detail_view(request, order_id: UUID):
                 'updated_at': order.updated_at.isoformat() if order.updated_at else None,
             }
 
-            patient_user_data, patient_error = get_user_from_identity_service(order.patient_user_id)
-            doctor_user_data, doctor_error = get_user_from_identity_service(order.doctor_user_id)
+            patient_user_data, patient_error = get_user_from_user_service(order.patient_user_id)
+            doctor_user_data, doctor_error = get_user_from_user_service(order.doctor_user_id)
 
             combined_data = {**order_data}
             if patient_user_data: combined_data['patient'] = patient_user_data
-            elif patient_error: combined_data['_patient_identity_error'] = patient_error
+            elif patient_error: combined_data['_patient_user_error'] = patient_error
             if doctor_user_data: combined_data['doctor'] = doctor_user_data
-            elif doctor_error: combined_data['_doctor_identity_error'] = doctor_error
+            elif doctor_error: combined_data['_doctor_user_error'] = doctor_error
 
             return JsonResponse(combined_data)
 
@@ -374,9 +374,9 @@ def lab_result_list_create_view(request):
              patient_ids.add(order.patient_user_id)
              doctor_ids.add(order.doctor_user_id)
 
-        # Fetch all needed Identity users in potentially optimized calls (if Identity had bulk GET)
+        # Fetch all needed User users in potentially optimized calls (if User had bulk GET)
         # For now, we'll use the helper function which calls one by one, still demonstrating the call.
-        # A real optimization would be: identity_users = get_users_bulk_from_identity(list(patient_ids | doctor_ids | tech_ids))
+        # A real optimization would be: user_users = get_users_bulk_from_user(list(patient_ids | doctor_ids | tech_ids))
         # Then iterate through results and match user data from the fetched dictionary.
         # Sticking to the simple helper for demo consistency.
 
@@ -408,23 +408,23 @@ def lab_result_list_create_view(request):
                      'notes': order.notes,
                      # Exclude timestamps from nested order to avoid confusion with result timestamps
                  }
-                 # Now aggregate Patient and Doctor identity data based on the Order's user_ids
-                 patient_user_data, patient_error = get_user_from_identity_service(order.patient_user_id)
-                 doctor_user_data, doctor_error = get_user_from_identity_service(order.doctor_user_id)
+                 # Now aggregate Patient and Doctor user data based on the Order's user_ids
+                 patient_user_data, patient_error = get_user_from_user_service(order.patient_user_id)
+                 doctor_user_data, doctor_error = get_user_from_user_service(order.doctor_user_id)
 
                  if patient_user_data: combined_entry['order']['patient'] = patient_user_data
-                 elif patient_error: combined_entry['order']['_patient_identity_error'] = patient_error
+                 elif patient_error: combined_entry['order']['_patient_user_error'] = patient_error
                  if doctor_user_data: combined_entry['order']['doctor'] = doctor_user_data
-                 elif doctor_error: combined_entry['order']['_doctor_identity_error'] = doctor_error
+                 elif doctor_error: combined_entry['order']['_doctor_user_error'] = doctor_error
 
             else:
                  combined_entry['_order_error'] = f"Corresponding Lab Order not found for ID {result_data['lab_order_id']}"
                  print(f"WARNING: {combined_entry['_order_error']}")
 
-            # Aggregate Lab Technician identity data
-            tech_user_data, tech_error = get_user_from_identity_service(result.lab_technician_user_id)
+            # Aggregate Lab Technician user data
+            tech_user_data, tech_error = get_user_from_user_service(result.lab_technician_user_id)
             if tech_user_data: combined_entry['lab_technician'] = tech_user_data
-            elif tech_error: combined_entry['_lab_technician_identity_error'] = tech_error
+            elif tech_error: combined_entry['_lab_technician_user_error'] = tech_error
 
             aggregated_data.append(combined_entry)
 
@@ -468,7 +468,7 @@ def lab_result_list_create_view(request):
 
         # --- Optional Validation ---
         # You could check if the lab_order_id exists in the database here.
-        # You could check if the lab_technician_user_id exists and is type 'lab_technician' in Identity.
+        # You could check if the lab_technician_user_id exists and is type 'lab_technician' in User.
         # Skipping for basic demo.
         # --- End Optional Validation ---
 
@@ -536,14 +536,14 @@ def lab_result_detail_view(request, result_id: UUID):
                      'status': order.status,
                      'notes': order.notes,
                  }
-                 # Aggregate Patient and Doctor identity data from the Order
-                 patient_user_data, patient_error = get_user_from_identity_service(order.patient_user_id)
-                 doctor_user_data, doctor_error = get_user_from_identity_service(order.doctor_user_id)
+                 # Aggregate Patient and Doctor user data from the Order
+                 patient_user_data, patient_error = get_user_from_user_service(order.patient_user_id)
+                 doctor_user_data, doctor_error = get_user_from_user_service(order.doctor_user_id)
 
                  if patient_user_data: combined_data['order']['patient'] = patient_user_data
-                 elif patient_error: combined_data['order']['_patient_identity_error'] = patient_error
+                 elif patient_error: combined_data['order']['_patient_user_error'] = patient_error
                  if doctor_user_data: combined_data['order']['doctor'] = doctor_user_data
-                 elif doctor_error: combined_data['order']['_doctor_identity_error'] = doctor_error
+                 elif doctor_error: combined_data['order']['_doctor_user_error'] = doctor_error
 
             except LabOrder.DoesNotExist:
                  combined_data['_order_error'] = f"Corresponding Lab Order not found for ID {result.lab_order_id}"
@@ -553,10 +553,10 @@ def lab_result_detail_view(request, result_id: UUID):
                  print(f"ERROR: {combined_data['_order_error']}")
 
 
-            # Aggregate Lab Technician identity data
-            tech_user_data, tech_error = get_user_from_identity_service(result.lab_technician_user_id)
+            # Aggregate Lab Technician user data
+            tech_user_data, tech_error = get_user_from_user_service(result.lab_technician_user_id)
             if tech_user_data: combined_data['lab_technician'] = tech_user_data
-            elif tech_error: combined_data['_lab_technician_identity_error'] = tech_error
+            elif tech_error: combined_data['_lab_technician_user_error'] = tech_error
 
 
             return JsonResponse(combined_data)

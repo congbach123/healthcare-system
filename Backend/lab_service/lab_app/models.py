@@ -9,7 +9,7 @@ from django.db.models import JSONField # Django 3.1+
 
 
 class LabTechnician(models.Model):
-    # Primary key links to the User in Identity Service
+    # Primary key links to the User in User Service
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Lab Technician-specific data
@@ -33,7 +33,7 @@ class LabTechnician(models.Model):
 class LabOrder(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # UUIDs referencing the Patient and Ordering Doctor users in the Identity Service
+    # UUIDs referencing the Patient and Ordering Doctor users in the User Service
     patient_user_id = models.UUIDField(db_index=True)
     doctor_user_id = models.UUIDField(db_index=True) # The doctor who ordered the test
 

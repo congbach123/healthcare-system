@@ -4,7 +4,7 @@ from django.db import models
 import uuid
 
 class Administrator(models.Model):
-    # Primary key links to the User in Identity Service
+    # Primary key links to the User in User Service
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Administrator-specific data (keep simple)
